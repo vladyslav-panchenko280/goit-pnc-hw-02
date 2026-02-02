@@ -2,6 +2,54 @@
 # https://github.com/asweigart/cipherwheel/blob/master/playfair.py
 # https://github.com/jameslyons/pycipher
 
+# Playfair-compatible alphabet (25 letters, I/J combined)
+PLAYFAIR_ALPHABET = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'
+
+
+def _encrypt_vigenere_playfair(msg, key):
+    """Vigenère encryption using 25-letter Playfair alphabet (I/J combined).
+    
+    This ensures the ciphertext only contains letters from the Playfair alphabet,
+    preventing issues when combining with Playfair cipher.
+    """
+    encrypted = []
+    key = key.upper().replace('J', 'I')
+    key_index = 0
+    
+    for char in msg:
+        if char.isalpha():
+            c = char.upper().replace('J', 'I')
+            k = key[key_index % len(key)]
+            # Use Playfair alphabet indices (0-24)
+            c_idx = PLAYFAIR_ALPHABET.index(c)
+            k_idx = PLAYFAIR_ALPHABET.index(k)
+            enc_idx = (c_idx + k_idx) % 25
+            encrypted.append(PLAYFAIR_ALPHABET[enc_idx])
+            key_index += 1
+    
+    return ''.join(encrypted)
+
+
+def _decrypt_vigenere_playfair(msg, key):
+    """Vigenère decryption using 25-letter Playfair alphabet (I/J combined)."""
+    decrypted = []
+    key = key.upper().replace('J', 'I')
+    key_index = 0
+    
+    for char in msg:
+        if char.isalpha():
+            c = char.upper()
+            k = key[key_index % len(key)]
+            # Use Playfair alphabet indices (0-24)
+            c_idx = PLAYFAIR_ALPHABET.index(c)
+            k_idx = PLAYFAIR_ALPHABET.index(k)
+            dec_idx = (c_idx - k_idx + 25) % 25
+            decrypted.append(PLAYFAIR_ALPHABET[dec_idx])
+            key_index += 1
+    
+    return ''.join(decrypted)
+
+
 def create_table(key):
     """Create 5x5 Playfair-style table from key"""
     key = key.upper().replace('J', 'I')
@@ -121,27 +169,79 @@ def decrypt_table(ciphertext, key):
 
 
 def encrypt_combined(message, vigenere_key, table_key):
-    """Level 2: Encrypt with Vigenere first, then table cipher"""
-    from vigenere_cipher import encrypt_vigenere
-
-    # First encrypt with Vigenere
-    vigenere_encrypted = encrypt_vigenere(message, vigenere_key)
+    """Level 2: Encrypt with Vigenère first, then table cipher.
+    
+    Uses a modified Vigenère cipher with 25-letter Playfair alphabet (I/J combined)
+    to ensure compatibility with Playfair cipher decryption.
+    
+    Args:
+        message: The plaintext message to encrypt
+        vigenere_key: Key for Vigenère cipher
+        table_key: Key for Playfair table cipher
+    
+    Returns:
+        tuple: (ciphertext, original_length) - length needed for proper decryption
+        
+    Note: The original_length is required for accurate decryption because
+    Playfair cipher adds padding characters that affect Vigenère key alignment.
+    """
+    # Preprocess message: uppercase letters only
+    clean_message = ''.join(c.upper() for c in message if c.isalpha())
+    original_length = len(clean_message)
+    
+    # First encrypt with Playfair-compatible Vigenère (25-letter alphabet)
+    vigenere_encrypted = _encrypt_vigenere_playfair(clean_message, vigenere_key)
 
     # Then encrypt with table cipher
     final_encrypted = encrypt_table(vigenere_encrypted, table_key)
 
-    return final_encrypted
+    return final_encrypted, original_length
 
 
-def decrypt_combined(ciphertext, vigenere_key, table_key):
-    """Level 2: Decrypt table cipher first, then Vigenere"""
-    from vigenere_cipher import decrypt_vigenere
-
+def decrypt_combined(ciphertext, vigenere_key, table_key, original_length=None):
+    """Level 2: Decrypt table cipher first, then Vigenère.
+    
+    Uses a modified Vigenère cipher with 25-letter Playfair alphabet (I/J combined)
+    to ensure compatibility with Playfair cipher.
+    
+    Args:
+        ciphertext: The encrypted text
+        vigenere_key: Key for Vigenère cipher
+        table_key: Key for Playfair table cipher
+        original_length: Original message length (if known) for accurate decryption
+    
+    Note: The decrypted text may contain:
+    - 'I' instead of 'J' (Playfair alphabet uses I for both I and J)
+    - Extra characters at the end if original_length is not provided
+    """
     # First decrypt table cipher
     table_decrypted = decrypt_table(ciphertext, table_key)
 
-    # Then decrypt Vigenere
-    final_decrypted = decrypt_vigenere(table_decrypted, vigenere_key)
+    # Remove Playfair padding X's that were inserted between repeated letters
+    # and at the end. We need to reconstruct the original Vigenère ciphertext.
+    # Note: This heuristic assumes X between two identical letters is padding.
+    # It works for our cipher combination but may not be 100% accurate for all inputs.
+    if original_length is not None:
+        cleaned = []
+        i = 0
+        while i < len(table_decrypted) and len(cleaned) < original_length:
+            char = table_decrypted[i]
+            # Check if this X is likely padding between identical letters
+            # Playfair inserts X when two identical letters would form a digraph
+            if char == 'X' and i > 0 and i < len(table_decrypted) - 1:
+                if table_decrypted[i-1] == table_decrypted[i+1]:
+                    i += 1
+                    continue
+            cleaned.append(char)
+            i += 1
+        table_decrypted = ''.join(cleaned)
+
+    # Then decrypt Vigenère using Playfair-compatible alphabet
+    final_decrypted = _decrypt_vigenere_playfair(table_decrypted, vigenere_key)
+    
+    # Truncate to original length if provided
+    if original_length is not None:
+        final_decrypted = final_decrypted[:original_length]
 
     return final_decrypted
 
@@ -186,16 +286,20 @@ def main():
     vigenere_key = 'CRYPTOGRAPHY'
     table_key = 'CRYPTO'
 
-    encrypted2 = encrypt_combined(first_sentence, vigenere_key, table_key)
+    encrypted2, original_length = encrypt_combined(first_sentence, vigenere_key, table_key)
     print(f'Final encrypted text: {encrypted2}')
 
     print('\nDECRYPTION')
-    decrypted2 = decrypt_combined(encrypted2, vigenere_key, table_key)
+    decrypted2 = decrypt_combined(encrypted2, vigenere_key, table_key, original_length)
     print(f'Final decrypted text: {decrypted2}')
 
-    # Verify integrity
-    if first_sentence.replace(' ', '').upper() in decrypted2.upper():
+    # Verify integrity - compare with J replaced by I (Playfair alphabet limitation)
+    original_clean = ''.join(c.upper() for c in first_sentence if c.isalpha()).replace('J', 'I')
+    decrypted_clean = decrypted2.upper()
+    
+    if original_clean == decrypted_clean:
         print('Integrity verified: Combined decryption successful!')
+        print('(Note: J is replaced with I due to Playfair alphabet)')
     else:
         print('Warning: Decryption does not match original')
 
