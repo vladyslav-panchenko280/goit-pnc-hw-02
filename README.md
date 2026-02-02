@@ -142,7 +142,9 @@ LEVEL 2: Combined Cipher (Vigenere + Table)
 Original text: The artist is the creator of beautiful things
 Vigenere key: CRYPTOGRAPHY
 Table key: CRYPTO
-Final encrypted text: WRRTFIDFPZVTGXGMUDUKPASVMAQKEYORYZCQQPQP
+Final encrypted text: WRRTFHDQPZVTGZOGUDTKYRSWMANKEYBDYZSMQPQP
 
 DECRYPTION
-Final decrypted text: THEARTIRTISTGECREATORO
+Final decrypted text: THEARTISTISTHECREATOROFBEAUTIFULTHINGS
+Integrity verified: Combined decryption successful!
+(Note: J is replaced with I due to Playfair alphabet)
