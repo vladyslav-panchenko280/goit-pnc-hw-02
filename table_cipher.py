@@ -7,7 +7,7 @@ PLAYFAIR_ALPHABET = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'
 
 
 def _encrypt_vigenere_playfair(msg, key):
-    """Vigenere encryption using 25-letter Playfair alphabet (I/J combined).
+    """Vigenère encryption using 25-letter Playfair alphabet (I/J combined).
     
     This ensures the ciphertext only contains letters from the Playfair alphabet,
     preventing issues when combining with Playfair cipher.
@@ -31,7 +31,7 @@ def _encrypt_vigenere_playfair(msg, key):
 
 
 def _decrypt_vigenere_playfair(msg, key):
-    """Vigenere decryption using 25-letter Playfair alphabet (I/J combined)."""
+    """Vigenère decryption using 25-letter Playfair alphabet (I/J combined)."""
     decrypted = []
     key = key.upper().replace('J', 'I')
     key_index = 0
@@ -169,23 +169,27 @@ def decrypt_table(ciphertext, key):
 
 
 def encrypt_combined(message, vigenere_key, table_key):
-    """Level 2: Encrypt with Vigenere first, then table cipher.
+    """Level 2: Encrypt with Vigenère first, then table cipher.
     
-    Uses a modified Vigenere cipher with 25-letter Playfair alphabet (I/J combined)
+    Uses a modified Vigenère cipher with 25-letter Playfair alphabet (I/J combined)
     to ensure compatibility with Playfair cipher decryption.
     
-    Note: The decryption may contain:
-    - 'I' instead of 'J' (Playfair alphabet uses I for both I and J)
-    - Additional characters at the end due to Playfair digraph padding
+    Args:
+        message: The plaintext message to encrypt
+        vigenere_key: Key for Vigenère cipher
+        table_key: Key for Playfair table cipher
     
     Returns:
         tuple: (ciphertext, original_length) - length needed for proper decryption
+        
+    Note: The original_length is required for accurate decryption because
+    Playfair cipher adds padding characters that affect Vigenère key alignment.
     """
     # Preprocess message: uppercase letters only
     clean_message = ''.join(c.upper() for c in message if c.isalpha())
     original_length = len(clean_message)
     
-    # First encrypt with Playfair-compatible Vigenere (25-letter alphabet)
+    # First encrypt with Playfair-compatible Vigenère (25-letter alphabet)
     vigenere_encrypted = _encrypt_vigenere_playfair(clean_message, vigenere_key)
 
     # Then encrypt with table cipher
@@ -195,14 +199,14 @@ def encrypt_combined(message, vigenere_key, table_key):
 
 
 def decrypt_combined(ciphertext, vigenere_key, table_key, original_length=None):
-    """Level 2: Decrypt table cipher first, then Vigenere.
+    """Level 2: Decrypt table cipher first, then Vigenère.
     
-    Uses a modified Vigenere cipher with 25-letter Playfair alphabet (I/J combined)
+    Uses a modified Vigenère cipher with 25-letter Playfair alphabet (I/J combined)
     to ensure compatibility with Playfair cipher.
     
     Args:
         ciphertext: The encrypted text
-        vigenere_key: Key for Vigenere cipher
+        vigenere_key: Key for Vigenère cipher
         table_key: Key for Playfair table cipher
         original_length: Original message length (if known) for accurate decryption
     
@@ -214,16 +218,17 @@ def decrypt_combined(ciphertext, vigenere_key, table_key, original_length=None):
     table_decrypted = decrypt_table(ciphertext, table_key)
 
     # Remove Playfair padding X's that were inserted between repeated letters
-    # and at the end. We need to reconstruct the original Vigenere ciphertext.
+    # and at the end. We need to reconstruct the original Vigenère ciphertext.
+    # Note: This heuristic assumes X between two identical letters is padding.
+    # It works for our cipher combination but may not be 100% accurate for all inputs.
     if original_length is not None:
-        # Remove X's that were inserted as padding
         cleaned = []
         i = 0
         while i < len(table_decrypted) and len(cleaned) < original_length:
             char = table_decrypted[i]
-            # Check if this X is padding between identical letters
+            # Check if this X is likely padding between identical letters
+            # Playfair inserts X when two identical letters would form a digraph
             if char == 'X' and i > 0 and i < len(table_decrypted) - 1:
-                # If surrounded by same letters, it's padding
                 if table_decrypted[i-1] == table_decrypted[i+1]:
                     i += 1
                     continue
@@ -231,7 +236,7 @@ def decrypt_combined(ciphertext, vigenere_key, table_key, original_length=None):
             i += 1
         table_decrypted = ''.join(cleaned)
 
-    # Then decrypt Vigenere using Playfair-compatible alphabet
+    # Then decrypt Vigenère using Playfair-compatible alphabet
     final_decrypted = _decrypt_vigenere_playfair(table_decrypted, vigenere_key)
     
     # Truncate to original length if provided
